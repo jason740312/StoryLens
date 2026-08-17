@@ -1,9 +1,9 @@
 # StoryLens：AI 實體書智慧朗讀 App 完整開發需求
 
 - 文件狀態：Draft for approval
-- 版本：0.3
+- 版本：0.4
 - 日期：2026-08-17
-- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項
+- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋
 - 目標讀者：產品、UX、iOS、測試與後續 Coding Agent
 
 ## 1. 文件定位與解讀原則
@@ -19,7 +19,7 @@
 
 ## 2. 產品摘要
 
-StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要場景的實體書智慧朗讀 App。使用者先將自己持有的實體書逐頁或逐跨頁掃描，完成 OCR、文字校正、閱讀順序確認及語音生成。之後選擇該書並將相機對準目前頁面，App 在裝置端辨識朗讀單位並播放已預先產生的音訊。
+StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要場景的實體書智慧朗讀 App。使用者先將自己持有的實體書逐頁或逐跨頁掃描，完成 OCR、文字校正、閱讀順序確認及語音生成。之後選擇該書並將相機對準目前頁面，App 在裝置端辨識朗讀單位；定位確認後立即關閉相機並播放已預先產生的音訊。相機只在定位頁面的短暫時間內使用，播放期間不開啟。
 
 核心價值是「一次建書，多次離線翻頁即讀」。實體書是主要介面，手機只負責建檔、辨識、播放與必要控制，不是電子書閱讀器。
 
@@ -45,7 +45,7 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 | OCR 閱讀順序 | 希望自動分析，也要求人工可改 | 自動排序只是初稿；人工結果才是朗讀真實來源 |
 | TTS Provider | 提到 MiniMax，但要求避免綁定 | Provider 抽象化；MiniMax 為首個候選，須經繁中聲音與成本驗收後定案 |
 | API Key | 私用可不建後端，但又要求安全 | 私人側載版允許使用者自帶 Key 並存 Keychain；任何對外散布版必須改用後端代理 |
-| 播放下一頁 | 「切換下一頁」可能中斷或排隊不明 | 新朗讀單位確認後立即停止舊音訊並播放新單位；同一單位不重播 |
+| 播放下一頁 | 「切換下一頁」可能中斷或排隊不明 | 翻頁由使用者重新掃描或 Previous/Next 觸發；新朗讀單位確認後立即停止舊音訊並播放新單位；同一單位不重播 |
 | 無文字頁 | 要掃描，但沒有播放規則 | 可標為 silent；辨識後不播放並等待翻頁 |
 
 ## 4. 目標、成功指標與非目標
@@ -65,11 +65,11 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 - 已選書、標準測試集上的 Top-1 朗讀單位辨識率至少 95%。
 - 自動誤播率低於 0.5%，即每 200 次確認事件不超過 1 次錯頁播放。「確認事件」定義為 recognition log 中一次由 stabilizing 轉入 confirmed 的狀態轉移；量測方法必須與 16.4 的 benchmark runner 使用同一定義。
 - 從新頁進入穩定取景到音訊開始播放，P50 不超過 0.8 秒、P95 不超過 1.5 秒。
-- 相同頁持續入鏡 5 分鐘，不因辨識循環自動重播。
+- 定位確認後相機立即關閉；重複掃描到同一朗讀單位不自動重播，重播僅能由 Replay 觸發。
 - Ready 書籍在飛航模式下可完成辨識、播放、暫停、重播與翻頁切換。
 - App 被正常關閉並重開後，書籍、校正文字、索引與音訊仍完整可用。
 - 連續閱讀 20 分鐘不崩潰、不出現持續性的 Serious/Critical thermal state。
-- 連續閱讀 20 分鐘的電量消耗需實測記錄；目標值於基準裝置確認後凍結（建議初始目標不超過 10%）。
+- 相機僅在定位時短暫開啟，閱讀階段不另設電量指標；建書階段（連續掃描與 TTS 生成）的電量與熱狀態需實測記錄。
 - 32 個朗讀單位的典型繪本，預設保存設定目標不超過 150 MB；超標需顯示實際占用而非靜默膨脹。
 
 ### 4.3 非目標
@@ -109,12 +109,12 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 #### B. 離線閱讀
 
 1. 使用者選擇一冊 Ready 書籍。
-2. App 請求或確認相機權限後開啟閱讀相機。
+2. App 請求或確認相機權限後開啟定位相機。
 3. App 在該書的 RecognitionTarget 集合中搜尋。
 4. 同一候選在時間、分數與幾何驗證均達門檻後才確認。
-5. 若為新朗讀單位，App 播放其本機音訊。
-6. 翻頁並確認新單位後，App 停止舊音訊並播放新音訊。
-7. 同一單位持續入鏡時不重播；只有 Replay 或離開後重新進入才可重播。
+5. 確認後 App 立即關閉相機；若為新朗讀單位，播放其本機音訊。
+6. 使用者翻頁後重新啟動掃描定位，或以 Previous/Next 直接切換；確認新單位後停止舊音訊並播放新音訊。
+7. 播放期間相機保持關閉；重複掃描到同一單位不自動重播，只有 Replay 才可重播。
 
 #### C. 修正與重新生成
 
@@ -228,14 +228,15 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-READ-005 第一階段以 feature print 距離取 Top-K 候選；第二階段對候選做幾何對齊與殘差驗證。
 - FR-READ-006 確認必須同時考量候選分數、第一與第二名差距、幾何品質、連續出現時間及最近確認頁。
 - FR-READ-007 門檻不可硬編碼散落在 UI；必須集中為可記錄版本的 RecognitionPolicy。
-- FR-READ-008 同一頁持續入鏡不得自動重播。
+- FR-READ-008 重複掃描到同一朗讀單位（等於目前單位）不得自動重播；重播僅能由 Replay 觸發。
 - FR-READ-009 新頁被確認時，必須停止舊頁音訊、切換 currentReadingUnit，並播放新頁。
 - FR-READ-010 confidence 低或候選歧義時不得播放；畫面顯示「請對準完整頁面」等可行動提示。
 - FR-READ-011 必須支援 Replay、Play、Pause、Resume、Stop、Previous 與 Next。
-- FR-READ-012 Previous/Next 是人工導覽：播放指定單位並短暫抑制自動切換；抑制時間與解除條件由 policy 管理。
+- FR-READ-012 Previous/Next 是人工導覽：不開啟相機，直接播放指定單位。
 - FR-READ-013 無文字或 silent 單位確認後不播放，進入等待換頁狀態。
 - FR-READ-014 相機中同時出現兩個單頁 target 時，優先使用該書的 captureMode 與 ROI 占比；無法穩定判斷則不播放。
 - FR-READ-015 App 進入背景時停止相機 session；MVP 不承諾背景持續辨識。
+- FR-READ-016 朗讀單位確認後必須立即停止 capture session 與辨識運算；播放期間相機保持關閉。翻頁切換由使用者重新啟動掃描或以 Previous/Next 觸發。
 
 驗收：
 
@@ -260,9 +261,9 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-STO-003 metadata 使用 SwiftData；大型影像與音訊使用 Application Support 檔案系統，只在資料庫保存相對路徑與雜湊。
 - FR-STO-004 寫檔採暫存檔、驗證、原子 rename；避免半成品被視為有效資產。
 - FR-STO-005 必須偵測可用空間不足，並在掃描或 TTS 前及寫入失敗後提供處理方式。
-- FR-STO-006 重要資產採檔案保護；除非未來需要鎖定畫面背景播放，預設使用 complete protection。
+- FR-STO-006 重要資產採檔案保護。因建書 job 需在背景（含鎖屏）續跑（NFR-PERF-005），建書中間產物與寫入目標不可使用 complete protection，應改用 completeUntilFirstUserAuthentication 或 completeUnlessOpen；實際等級於 T03/T08 定案並記錄。
 - FR-STO-007 不將使用者書籍影像或音訊放入可被系統任意清除的 Cache 目錄。
-- FR-STO-008 備份策略為待決策（見 21）；決策前大型資產目錄預設不排除於系統備份，但必須集中於單一根目錄，讓未來能以單一開關調整 isExcludedFromBackup。
+- FR-STO-008 已決策（2026-08-17）：MVP 不處理備份策略，維持系統預設行為；大型資產仍集中於單一根目錄，未來若需調整 isExcludedFromBackup 可單點切換。
 
 ### 6.10 設定與權限
 
@@ -281,7 +282,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - NFR-PERF-002 同時間最多處理一個 live frame；新 frame 可丟棄，不得無限排隊。
 - NFR-PERF-003 追蹤 recognition latency、confirmation latency、audio start latency 與 dropped frames。
 - NFR-PERF-004 所有正式門檻需在至少一台較舊支援裝置與一台主要開發裝置 benchmark。
-- NFR-PERF-005 建書階段長任務（OCR、TTS、索引）在 App 進入背景或被終止時必須安全暫停且可續作（透過 ProcessingJob resumablePayload）；MVP 不要求背景續跑，BGProcessingTask 列為可。
+- NFR-PERF-005 建書階段長任務（OCR、TTS、索引）必須以背景任務續跑：TTS 網路請求使用 URLSession background configuration；OCR 與索引等本機運算使用 BGTaskScheduler（BGProcessingTask）排程。iOS 不保證背景執行時間與時點，因此每個 job 仍必須可安全暫停並於前景恢復（ProcessingJob resumablePayload）；背景續跑是體驗要求，可續作是正確性底線。背景寫檔需搭配相容的檔案保護等級（見 FR-STO-006）。
 
 ### 7.2 可靠性與恢復
 
@@ -368,6 +369,8 @@ iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 Swi
 6. 依 warp 合理性、有效重疊區、影像殘差、feature distance 與 runner-up margin 算 composite score。
 7. 將候選送入 temporal stabilizer；候選需連續達標一段時間且未出現強競爭者。
 8. 確認後設 page lock；只有可信的新候選或人工操作才能切換。
+
+候選歧義時，可對頁碼區域做輕量 OCR 作為輔助訊號（多數書籍具頁碼）；此為可選優化，非 MVP 必須。同書高度相似頁不列為 MVP 阻擋條件（2026-08-17 產品決策），測試時記錄即可。
 
 ### 9.2 必做技術 Spike
 
@@ -549,6 +552,8 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 
 ### 12.2 閱讀狀態
 
+相機只在 searching 與 stabilizing 期間運作；confirmed 後立即關閉，播放與等待階段不開啟相機。使用者以「掃描」動作重新進入 searching。
+
 - inactive：未啟動閱讀。
 - requestingPermission：等待相機權限。
 - startingCamera：建立 session。
@@ -557,7 +562,7 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 - confirmed(unit)：新單位已確認。
 - playing(unit, block)：播放中。
 - paused(unit, block)：人工暫停。
-- waitingForChange(unit)：已播放完或 silent，等待離開目前單位。
+- waitingForNextScan(unit)：已播放完或 silent；相機已關閉，等待使用者啟動下一次掃描或人工導覽。
 - manualOverride(unit)：Previous/Next 造成的短暫人工控制。
 - unavailable(reason)：權限、資產或不可恢復相機錯誤。
 
@@ -566,13 +571,13 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 - searching + 合格候選 → stabilizing。
 - stabilizing + 持續達標 → confirmed。
 - stabilizing + 分數下降或競爭候選 → searching。
-- confirmed + 有音訊且不是 lastPlayedUnit → playing。
-- confirmed + silent → waitingForChange。
-- playing + 同一 unit frame → playing，不重啟。
+- confirmed → 立即關閉相機；有音訊且不是 lastPlayedUnit → playing。
+- confirmed + silent → waitingForNextScan。
+- playing + 重新掃描確認同一 unit → playing，不重啟。
 - playing + 新 unit confirmed → 停止舊音訊 → playing(new)。
-- playing + audio ended → waitingForChange。
-- waitingForChange + 同一 unit → 保持等待。
-- waitingForChange + 新 unit confirmed → playing(new)。
+- playing + audio ended → waitingForNextScan。
+- waitingForNextScan + 重新掃描確認同一 unit → 保持等待，不重播。
+- waitingForNextScan + 新 unit confirmed → playing(new)。
 - 任意狀態 + Replay → playing(current, fromStart)。
 - 任意相機狀態 + app background → inactive，停止 capture。
 
@@ -681,7 +686,7 @@ Recognizer 只產生 candidate event；只有 ReaderSession 可決定播放，�
 - 測試集與調參集分離，避免只對同一批畫面調到高分。
 - 每次 algorithmVersion 或 policy 變更都輸出 accuracy、confusion matrix、false autoplay、P50/P95 latency。
 - 誤播率分母「確認事件」與延遲量測點（穩定取景起點、confirmed、audio start）必須在 benchmark runner 與 App 內 metrics 使用同一定義（見 4.2）。
-- 測試頁面要特別包含同書相似頁、無文字頁、全圖頁與跨頁。
+- 測試頁面要包含無文字頁、全圖頁與跨頁；同書相似頁列為記錄項而非 MVP 阻擋條件（2026-08-17 產品決策，歧義時可用頁碼輔助，見 9.1）。
 
 ## 17. 建議 Repository 與 Xcode 專案結構
 
@@ -894,7 +899,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - Dependencies：T03、T06、T07。
 - Input：reviewed TextBlocks、VoiceProfile。
 - Expected output：可恢復生成佇列與有效 AudioAssets。
-- Acceptance：Key 不進 log/DB；相同 hash 不重送；失敗可局部重試。
+- Acceptance：Key 不進 log/DB；相同 hash 不重送；失敗可局部重試；App 退背景後生成與下載以背景 session 繼續。
 - Tests：mock HTTP statuses、cancel、restart、atomic replace。
 
 ### T09 — Page Recognition Spike
@@ -924,7 +929,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - Dependencies：T10。
 - Input：Candidate stream。
 - Expected output：ReaderSession 與 camera preview。
-- Acceptance：單幀不播、同頁不重播、新頁確認才切換、背景停止 camera。
+- Acceptance：單幀不播、確認後立即關閉相機、重複掃描同頁不重播、新頁確認才切換、背景停止 camera。
 - Tests：完整 state transition、權限拒絕、interruption。
 
 ### T12 — AudioService 與播放控制
@@ -980,7 +985,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 7. 是否需要鎖屏後繼續播完當前頁；本文件列為非 MVP。
 8. App UI 語言是否只需繁體中文，或第一版即需英文介面。
 9. Android 最低 API level、最低 RAM、基準 SoC 與首批實機清單；延至 iOS MVP 穩定後依當時市場決定。
-10. iCloud／裝置備份是否包含影像與音訊資產；預設暫不排除，見 FR-STO-008。
+10. 已決策（2026-08-17）：MVP 不處理備份策略，見 FR-STO-008。
 11. 破音字與人名發音修正的實作方式（Provider 音標、SSML 或替換字），依 T07 Spike 結果定案。
 12. 單書與每月 TTS 成本上限的具體數值，以及 FR-TTS-011 重生成確認流程的文案。
 
@@ -1003,8 +1008,8 @@ Then：
 
 - App 不重新做完整 OCR，也不呼叫 TTS。
 - App 在指標時間內正確確認並播放本機音訊。
-- 同頁持續入鏡不重播。
-- 翻到新頁後停止舊音訊並播放新單位。
+- 定位成功後相機自動關閉；重複掃描同一頁不重播。
+- 翻到新頁並重新掃描後，停止舊音訊並播放新單位。
 - 低 confidence 或歧義時保持安靜並提示調整。
 - 單一 silent 頁、缺字頁或歷史失敗不使整本書崩潰。
 - 關閉並重開後資料仍完整。
