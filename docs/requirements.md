@@ -1,9 +1,9 @@
 # StoryLens：AI 實體書智慧朗讀 App 完整開發需求
 
 - 文件狀態：Draft for approval
-- 版本：0.6
+- 版本：0.7
 - 日期：2026-08-17
-- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋；v0.5 定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算；v0.6 明確本地端＝自架於使用者 Mac（M2 MacBook Air 16GB）的開源模型服務
+- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋；v0.5 定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算；v0.6 明確本地端＝自架於使用者 Mac（M2 MacBook Air 16GB）的開源模型服務；v0.7 音檔改以頁（ReadingUnit）為單位
 - 目標讀者：產品、UX、iOS、測試與後續 Coding Agent
 
 ## 1. 文件定位與解讀原則
@@ -189,26 +189,26 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 
 - 使用者儲存、離開並返回後，所有人工編輯與排序一致。
 - 被排除文字不出現在 TTS request payload。
-- 同一段文字未改變時，重跑生成不得重複計費。
+- 同一頁內容未改變時，重跑生成不得重新請求 Mac 運算。
 
 ### 6.5 TTS 生成
 
 - FR-TTS-001 必須以 Provider protocol 抽象化雲端與本機語音服務。
 - FR-TTS-002 MVP 的主要 Provider 為自架 Mac TTS 服務：開源 TTS 模型部署在使用者的 M2 MacBook Air 16GB，iPhone 經區域網路以 HTTP 呼叫（見 6.5.1）。模型候選：CosyVoice 2、GPT-SoVITS、fish-speech／OpenAudio、MeloTTS，由 T07 繁中盲測定案。Apple AVSpeechSynthesizer（write API 落地音檔）為 Mac 不在線時的保底 Provider。第三方雲端不在 MVP，但抽象層允許未來加入。
 - FR-TTS-003 必須支援 voice、speed、volume；style、pitch 僅在 Provider 支援時顯示。
-- FR-TTS-004 必須以 TextBlock 或可控長度片段生成，並以 ReadingUnit manifest 決定播放順序。
-- FR-TTS-005 每個 request 必須有 contentHash，包含標準化文字、Provider、model、voice、生成參數、generationFormatVersion 與分段規則版本；canonicalization 規則見 23.5。
+- FR-TTS-004 以 ReadingUnit（頁）為單位生成與保存單一音檔：Mac 端把該頁所有 includeInSpeech 區塊依 readingOrder 合成（內部可分段再串接、控制區塊間停頓），回傳一個頁音檔；iPhone 不做音訊拼接。
+- FR-TTS-005 每個頁面 request 必須有 contentHash：該頁 includeInSpeech 區塊依 readingOrder 以固定分隔規則串接的標準化文字，加上 Provider、model、voice、生成參數與 generationFormatVersion；canonicalization 規則見 23.5。
 - FR-TTS-006 相同 contentHash 已有有效檔案時必須重用，不重新運算生成。
 - FR-TTS-007 生成佇列必須支援進度、取消、單項重試、指數退避及 Provider 錯誤訊息轉譯。
 - FR-TTS-008 新檔下載與驗證成功後才能原子替換舊檔。
-- FR-TTS-009 書籍只有在所有 includeInSpeech 區塊具備有效音訊，或被明確標成 silent，才可為 Ready。
+- FR-TTS-009 書籍只有在每個需朗讀的 ReadingUnit 具備有效頁音訊，或被明確標成 silent，才可為 Ready。
 - FR-TTS-010 Apple 本機 TTS 至少作為保底 Provider；若 T07 選定裝置端神經 TTS 模型，Apple TTS 仍保留為預覽與降級選項。
 - FR-TTS-011 生成前必須顯示影響範圍（朗讀單位數、區塊數、字元總數）；更換 voice 或 model 等會使整本音訊變 stale 的操作，必須顯示重生成範圍並二次確認，避免非預期的整本重新生成（成本是等待時間與 Mac 運算資源）。
 
 #### 6.5.1 Mac 端 TTS 服務（SelfHostedSpeechServer）
 
 - SRV-001 服務以 HTTP REST 提供 health、voices、synthesize 三個端點；request/response 即為平台中立的 Speech Provider contract（23.2）。
-- SRV-002 synthesize 輸入為校正後文字與 VoiceProfile 參數，輸出為 canonical 音訊（MP3，取樣率與 bitrate 寫入回應）；轉檔在 Mac 端完成，iPhone 不做轉碼。
+- SRV-002 synthesize 以頁為單位：輸入為該頁依 readingOrder 排好的校正後區塊文字與 VoiceProfile 參數，輸出為單一 canonical 頁音檔（MP3，取樣率與 bitrate 寫入回應）；區塊合成、停頓控制與轉檔皆在 Mac 端完成，iPhone 不做拼接與轉碼。可選回傳每區塊起訖時間戳（供未來點讀）。
 - SRV-003 回應必須帶 modelID 與 engineVersion，兩者納入 contentHash；Mac 換模型或升版後，舊音訊依 hash 規則自然變 stale。
 - SRV-004 連線方式：預設以 Bonjour 在區域網路自動發現，並允許手動輸入 IP:port；連不上時佇列保留、可稍後續作，並可切換 Apple 保底 Provider。
 - SRV-005 服務僅監聽私有網段，不對公網開放；是否加簡單存取 token 為待決策（21）。
@@ -218,7 +218,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 
 - 飛航模式閱讀既有書籍時，網路請求數為零；建書的 TTS 流量僅限與 Mac 服務所在的私有網段，無任何對外連線。
 - 模擬 Mac 服務離線、生成失敗、逾時、回傳空檔與磁碟已滿，均有可理解且可重試的狀態；服務離線時佇列保留並提示，可改用保底 Provider。
-- 只修改一個 TextBlock 時，只重新生成該區塊。
+- 只修改一個 TextBlock 時，只重新生成該區塊所屬頁面的音檔，其他頁不受影響。
 
 ### 6.6 辨識索引
 
@@ -257,7 +257,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 ### 6.8 音訊播放
 
 - FR-AUD-001 使用 AVAudioSession playback 類別及 spokenAudio 或經驗證的合適 mode。
-- FR-AUD-002 播放器必須支援多 TextBlock 連續播放與目前區塊追蹤。
+- FR-AUD-002 播放器以頁為單位播放單一音檔；若音檔附有區塊時間戳，應支援目前區塊追蹤（為未來點讀鋪路），MVP 可選。
 - FR-AUD-003 必須處理耳機、藍牙等 route change，以及電話或 Siri 等 interruption。
 - FR-AUD-004 音量設定不應偷偷改變系統音量；App 音量作為播放器增益。
 - FR-AUD-005 背景音訊不列入 MVP 必須項；若啟用，需要另行確認 Background Modes 與產品行為。
@@ -456,7 +456,7 @@ status = failed 保留給整本書層級的不可恢復錯誤（例如 schema mi
 
 ReadingUnit 是閱讀與播放的核心單位，避免把紙張物理頁、掃描影像與朗讀行為混為一談。
 
-speechStatus 為衍生欄位，由該單位所有 includeInSpeech TextBlock 的 AudioAsset 狀態聚合：任一 failed 為 failed；否則任一 stale 為 stale；否則任一 queued/generating 為 generating；全部 ready 為 ready；無需朗讀（silent 或無 includeInSpeech 區塊）為 notNeeded。聚合規則必須有 unit test，不得與 AudioAsset 狀態各自為政。
+speechStatus 為衍生欄位：音檔以頁為單位，speechStatus 直接鏡射該單位唯一有效 AudioAsset 的狀態；無需朗讀（silent 或無 includeInSpeech 區塊）為 notNeeded。任何 includeInSpeech 區塊的文字、順序或語音設定改變，都使該頁 AudioAsset 變 stale。規則必須有 unit test。
 
 ### 11.3 PageAsset
 
@@ -504,8 +504,8 @@ speechStatus 為衍生欄位，由該單位所有 includeInSpeech TextBlock 的 
 ### 11.6 AudioAsset
 
 - id: UUID
-- textBlockID: UUID
-- segmentIndex: Int（同一 TextBlock 依 FR-TTS-004 分段生成時的播放順序；未分段為 0）
+- readingUnitID: UUID（音檔以頁為單位；一個 ReadingUnit 至多一個有效 AudioAsset）
+- blockTimestamps: Data?（可選；server 回傳的每區塊起訖毫秒，供目前區塊追蹤與未來點讀）
 - relativePath: String
 - providerID / modelID / voiceID: String
 - contentHash: String
@@ -556,7 +556,7 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 
 - 任一處理階段可暫停並在重開 App 後恢復。
 - 單位級失敗進入部分錯誤，不直接把整書標成 failed。
-- Ready 的必要條件是：每個 ReadingUnit 有有效 reference/index；每個需朗讀的 TextBlock 有有效音訊；其餘單位明確標為 silent。
+- Ready 的必要條件是：每個 ReadingUnit 有有效 reference/index；每個需朗讀的 ReadingUnit 有有效頁音訊；其餘單位明確標為 silent。
 - Ready 書籍修改影像會讓 OCR、index 及相關 audio 依依賴關係變 stale。
 - 只修改文字不應重建影像索引；只改語音參數不應重跑 OCR。
 
@@ -570,8 +570,8 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 - searching：沒有可信候選。
 - stabilizing(candidate, evidence)：候選累積證據。
 - confirmed(unit)：新單位已確認。
-- playing(unit, block)：播放中。
-- paused(unit, block)：人工暫停。
+- playing(unit)：播放中（單一頁音檔）。
+- paused(unit)：人工暫停。
 - waitingForNextScan(unit)：已播放完或 silent；相機已關閉，等待使用者啟動下一次掃描或人工導覽。
 - manualOverride(unit)：Previous/Next 造成的短暫人工控制。
 - unavailable(reason)：權限、資產或不可恢復相機錯誤。
@@ -678,7 +678,7 @@ MVP 採本地端 TTS，無 API Key；本節僅於未來啟用雲端 Provider 時
 - Scan image → OCR → editable blocks。
 - Reviewed text → mock SpeechProvider → audio manifest。
 - Ready book → prerecorded camera frames → recognition → mock playback。
-- 修改單一文字區塊 → 只重建該 audio。
+- 修改單一文字區塊 → 只重建該頁 audio。
 - 模擬 App restart → job resume 與書籍可用性。
 - metadata/file mismatch → integrity repair。
 
@@ -949,7 +949,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；serve
 
 ### T12 — AudioService 與播放控制
 
-- Goal：實作多區塊播放、切頁停止、pause/resume/replay/previous/next。
+- Goal：實作頁音檔播放、切頁停止、pause/resume/replay/previous/next。
 - Files allowed：StoryLens/Services/Audio/**、Reader control UI、對應 tests。
 - Dependencies：T08、T11。
 - Input：AudioAsset manifest。
@@ -1118,6 +1118,7 @@ contentHash 的 canonicalization 必須固定：
 - 換行統一為 LF。
 - 是否 trim、連續空白及標點處理需版本化，不可由平台預設 locale 決定。
 - Provider 參數以固定 key order 序列化後與文字一起 SHA-256。
+- 頁級 hash：該頁 includeInSpeech 區塊依 readingOrder，以固定分隔符串接後再做上述正規化；分隔規則需版本化。
 - contracts/fixtures 必須提供繁中、英文、emoji、全形標點與混合文字 test vectors。
 
 ### 23.6 辨識索引需改成可重建快取

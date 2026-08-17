@@ -78,6 +78,7 @@
 6. **基準裝置 = iPhone 15 Pro Max**：目前唯一實機；所有效能門檻在此機 benchmark 並凍結，未來支援較舊機型必須重新 benchmark。待決策第 1 項定案，deployment target 維持 iOS 17。
 7. **TTS 改為本地端模型運算**：MVP 不使用第三方雲端 TTS——無 API 費用、無 Key 管理、無資料出境；Provider 抽象層保留未來加入雲端的空間。原問題 7 的「整本重新計費」防護改為「整本重新生成」防護。
    - 2026-08-17 補充（v0.6）：「本地端」明確為**自架在使用者 M2 MacBook Air 16GB 上的 TTS 服務**，iPhone 建書時經區域網路呼叫，閱讀仍完全離線。此架構讓品質風險大幅下降——Mac 可跑完整開源模型（候選：CosyVoice 2、GPT-SoVITS、fish-speech／OpenAudio、MeloTTS，繁中表現以 T07 盲測定案），Apple 內建 TTS 改為 Mac 不在線時的保底。新增的代價：建書時 Mac 必須在線且同一網段、iOS 需 Local Network 權限（FR-SET-007）、repo 多一個 server/ 元件要維護（6.5.1）。
+8. **音檔以頁（ReadingUnit）為單位回傳與保存**（2026-08-17，v0.7）：Mac 端把整頁區塊依閱讀順序合成單一 MP3（含停頓控制，可選每區塊時間戳），iPhone 不做音訊拼接。資料模型與播放器同步簡化：AudioAsset 由「每區塊一檔（＋分段編號）」改為「每頁一檔」，第 2 節問題 1 的 segmentIndex 方案作廢；contentHash 改為頁級（區塊依 readingOrder 以固定分隔規則串接）。代價是改一個字會重生成整頁音檔——在 Mac 上運算成本低，可接受。
 
 ## 7. 修訂紀錄
 
@@ -85,3 +86,4 @@
 - v0.3 → v0.4：併入第 6 節前四項產品決策（涉及 2、3.2、4.2、5.2、6.7、6.9、7.1、9.1、12.2、16.4、20、21、22 節）。
 - v0.4 → v0.5：定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算（涉及 2、3.1、3.2、4.2、5.2、6.5、6.7、6.10、7.1、7.3、8、9.2、12.2、14.1、18.1、19、20、21、22 節）。
 - v0.5 → v0.6：TTS 本地端明確為自架 Mac 服務——新增 6.5.1（SelfHostedSpeechServer SRV-001–006）、FR-SET-007（Local Network 權限）、repo 結構加入 server/、NFR-SEC-005 放寬區網 HTTP、T07/T08 改為 Mac 模型評測與 HTTP adapter、待決策新增第 13 項。
+- v0.6 → v0.7：音檔改以頁（ReadingUnit）為單位（涉及 6.4、6.5、6.5.1、6.8、11.2、11.6、12、16.2、20、23.5 節）；AudioAsset 改掛 readingUnitID，segmentIndex 移除，新增可選 blockTimestamps。
