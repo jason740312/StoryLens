@@ -1,9 +1,9 @@
 # StoryLens：AI 實體書智慧朗讀 App 完整開發需求
 
 - 文件狀態：Draft for approval
-- 版本：0.5
+- 版本：0.6
 - 日期：2026-08-17
-- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋；v0.5 定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算
+- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋；v0.5 定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算；v0.6 明確本地端＝自架於使用者 Mac（M2 MacBook Air 16GB）的開源模型服務
 - 目標讀者：產品、UX、iOS、測試與後續 Coding Agent
 
 ## 1. 文件定位與解讀原則
@@ -29,11 +29,11 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 
 - 第一平台為 iPhone；使用 Swift、SwiftUI 與 Apple 原生框架。
 - 優先內容為繁體中文、英文兒童繪本與故事書。
-- 建書階段允許較重的運算；完成後的一般閱讀必須可離線。TTS 採本地端模型運算（2026-08-17 決策），全流程預設不需網路。
+- 建書階段允許較重的運算；完成後的一般閱讀必須可離線。TTS 採本地端模型運算（2026-08-17 決策）：模型部署在使用者自己的 Mac（M2 MacBook Air 16GB），iPhone 於建書時經區域網路呼叫；閱讀階段完全不需網路。
 - OCR 結果必須允許人工校正，且校正完成後才生成正式朗讀。
 - 語音預先生成並落地保存；閱讀時不得重新做完整 OCR 或呼叫雲端 TTS。
 - MVP 不含帳號、雲端同步、公開分享、書籍市場、Android、Web 或 App Store 發布。
-- 掃描影像與文字預設全部留在裝置；MVP 的 TTS 在本地端運算，不上傳任何內容。未來若啟用雲端 Provider，僅傳送校正後文字與語音參數。
+- 掃描影像預設留在裝置；TTS 只把校正後文字與語音參數送到使用者自己的 Mac（同一區域網路），不經任何第三方雲端。
 
 ### 3.2 原始需求中的矛盾與決議
 
@@ -43,7 +43,7 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 | 單頁或左右跨頁 | 兩者都要求支援，但資料模型只有 Page | 新增 ReadingUnit；一個朗讀單位可對應單頁或跨頁 |
 | 頁面辨識技術 | 列出多種候選但未選定 | 採兩階段 Hybrid，先用全域特徵縮小候選，再做幾何驗證與時間穩定 |
 | OCR 閱讀順序 | 希望自動分析，也要求人工可改 | 自動排序只是初稿；人工結果才是朗讀真實來源 |
-| TTS Provider | 提到 MiniMax，但要求避免綁定 | Provider 抽象化；2026-08-17 決策採本地端模型運算，候選為 Apple 本機 TTS 與裝置端神經 TTS 模型，經繁中聲音驗收定案；雲端 Provider 降為未來選項 |
+| TTS Provider | 提到 MiniMax，但要求避免綁定 | Provider 抽象化；2026-08-17 決策：主要 Provider 為自架於使用者 Mac 的開源 TTS 模型服務（區域網路），Apple 本機 TTS 為保底；模型經繁中盲測定案；第三方雲端降為未來選項 |
 | API Key | 私用可不建後端，但又要求安全 | MVP 採本地 TTS，無 Key 需求；未來啟用雲端 Provider 時，私人側載版自帶 Key 存 Keychain，對外散布版必須後端代理 |
 | 播放下一頁 | 「切換下一頁」可能中斷或排隊不明 | 比照點讀筆：每次掃描確認即播放該單位，重掃同一頁即從頭重播；掃描確認新單位時立即停止舊音訊 |
 | 無文字頁 | 要掃描，但沒有播放規則 | 可標為 silent；辨識後不播放並等待翻頁 |
@@ -194,7 +194,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 ### 6.5 TTS 生成
 
 - FR-TTS-001 必須以 Provider protocol 抽象化雲端與本機語音服務。
-- FR-TTS-002 MVP 至少整合一個本地端 Provider，可產生可接受的繁中與英文語音；候選為 Apple AVSpeechSynthesizer（以 write API 落地音檔）與裝置端神經 TTS 模型（Core ML／開源模型移植），由 T07 盲測定案。雲端 Provider 不在 MVP，但抽象層必須允許未來加入。
+- FR-TTS-002 MVP 的主要 Provider 為自架 Mac TTS 服務：開源 TTS 模型部署在使用者的 M2 MacBook Air 16GB，iPhone 經區域網路以 HTTP 呼叫（見 6.5.1）。模型候選：CosyVoice 2、GPT-SoVITS、fish-speech／OpenAudio、MeloTTS，由 T07 繁中盲測定案。Apple AVSpeechSynthesizer（write API 落地音檔）為 Mac 不在線時的保底 Provider。第三方雲端不在 MVP，但抽象層允許未來加入。
 - FR-TTS-003 必須支援 voice、speed、volume；style、pitch 僅在 Provider 支援時顯示。
 - FR-TTS-004 必須以 TextBlock 或可控長度片段生成，並以 ReadingUnit manifest 決定播放順序。
 - FR-TTS-005 每個 request 必須有 contentHash，包含標準化文字、Provider、model、voice、生成參數、generationFormatVersion 與分段規則版本；canonicalization 規則見 23.5。
@@ -203,12 +203,21 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-TTS-008 新檔下載與驗證成功後才能原子替換舊檔。
 - FR-TTS-009 書籍只有在所有 includeInSpeech 區塊具備有效音訊，或被明確標成 silent，才可為 Ready。
 - FR-TTS-010 Apple 本機 TTS 至少作為保底 Provider；若 T07 選定裝置端神經 TTS 模型，Apple TTS 仍保留為預覽與降級選項。
-- FR-TTS-011 生成前必須顯示影響範圍（朗讀單位數、區塊數、字元總數）；更換 voice 或 model 等會使整本音訊變 stale 的操作，必須顯示重生成範圍並二次確認，避免非預期的整本重新生成（本地運算的成本是時間、電量與發熱）。
+- FR-TTS-011 生成前必須顯示影響範圍（朗讀單位數、區塊數、字元總數）；更換 voice 或 model 等會使整本音訊變 stale 的操作，必須顯示重生成範圍並二次確認，避免非預期的整本重新生成（成本是等待時間與 Mac 運算資源）。
+
+#### 6.5.1 Mac 端 TTS 服務（SelfHostedSpeechServer）
+
+- SRV-001 服務以 HTTP REST 提供 health、voices、synthesize 三個端點；request/response 即為平台中立的 Speech Provider contract（23.2）。
+- SRV-002 synthesize 輸入為校正後文字與 VoiceProfile 參數，輸出為 canonical 音訊（MP3，取樣率與 bitrate 寫入回應）；轉檔在 Mac 端完成，iPhone 不做轉碼。
+- SRV-003 回應必須帶 modelID 與 engineVersion，兩者納入 contentHash；Mac 換模型或升版後，舊音訊依 hash 規則自然變 stale。
+- SRV-004 連線方式：預設以 Bonjour 在區域網路自動發現，並允許手動輸入 IP:port；連不上時佇列保留、可稍後續作，並可切換 Apple 保底 Provider。
+- SRV-005 服務僅監聽私有網段，不對公網開放；是否加簡單存取 token 為待決策（21）。
+- SRV-006 服務程式碼與模型版本管理放在 repo 的 server/ 目錄；在 M2 16GB 上的生成即時率（RTF）與記憶體占用需於 T07 量測並記錄。
 
 驗收：
 
-- 飛航模式下建書與閱讀的網路請求數皆為零（本地 TTS）。
-- 模擬生成失敗、模型載入失敗、逾時、回傳空檔與磁碟已滿，均有可理解且可重試的狀態；未來啟用雲端 Provider 時另涵蓋 401、429、5xx。
+- 飛航模式閱讀既有書籍時，網路請求數為零；建書的 TTS 流量僅限與 Mac 服務所在的私有網段，無任何對外連線。
+- 模擬 Mac 服務離線、生成失敗、逾時、回傳空檔與磁碟已滿，均有可理解且可重試的狀態；服務離線時佇列保留並提示，可改用保底 Provider。
 - 只修改一個 TextBlock 時，只重新生成該區塊。
 
 ### 6.6 辨識索引
@@ -273,6 +282,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-SET-004 相機權限被拒時提供前往系統設定的說明；其餘書庫與編輯功能仍可使用。
 - FR-SET-005 僅於未來啟用雲端 Provider 時適用：API Key 只能存 Keychain，禁止寫入 repository、UserDefaults、log 或 crash payload。
 - FR-SET-006 僅於未來啟用雲端 Provider 時適用：必須提供測試 Provider 連線與刪除 Key 的操作。
+- FR-SET-007 呼叫 Mac TTS 服務需要 Local Network 權限：提供 NSLocalNetworkUsageDescription 用途說明，使用 Bonjour 時一併宣告 NSBonjourServices；權限被拒時 TTS 生成步驟提示前往設定，其餘功能不受影響。
 
 ## 7. 非功能性需求
 
@@ -282,7 +292,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - NFR-PERF-002 同時間最多處理一個 live frame；新 frame 可丟棄，不得無限排隊。
 - NFR-PERF-003 追蹤 recognition latency、confirmation latency、audio start latency 與 dropped frames。
 - NFR-PERF-004 所有正式門檻在基準裝置 iPhone 15 Pro Max 上 benchmark 並凍結（目前唯一實機）；未來若要支援較舊機型，必須先在該機型重新 benchmark，不可沿用既有門檻。
-- NFR-PERF-005 建書階段長任務（OCR、TTS 生成、索引）皆為本機運算，必須以 BGTaskScheduler（BGProcessingTask）排程於背景續跑；未來若啟用雲端 Provider，其網路請求改用 URLSession background configuration。iOS 不保證背景執行時間與時點，因此每個 job 仍必須可安全暫停並於前景恢復（ProcessingJob resumablePayload）；背景續跑是體驗要求，可續作是正確性底線。背景寫檔需搭配相容的檔案保護等級（見 FR-STO-006）。
+- NFR-PERF-005 建書階段長任務必須可背景續跑：OCR 與索引等 iPhone 本機運算以 BGTaskScheduler（BGProcessingTask）排程；對 Mac 服務的 TTS 請求與音檔下載使用 URLSession background configuration。iOS 不保證背景執行時間與時點，因此每個 job 仍必須可安全暫停並於前景恢復（ProcessingJob resumablePayload）；背景續跑是體驗要求，可續作是正確性底線。背景寫檔需搭配相容的檔案保護等級（見 FR-STO-006）。
 
 ### 7.2 可靠性與恢復
 
@@ -294,15 +304,15 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 ### 7.3 隱私與安全
 
 - NFR-SEC-001 OCR、索引與頁面辨識預設完全在裝置端。
-- NFR-SEC-002 MVP 的 TTS 在本地端運算，無任何內容上傳；未來若啟用雲端 TTS，payload 限於校正文字、選定 voice/model 與必要參數，不上傳頁面影像。
+- NFR-SEC-002 TTS payload 只送往使用者自己的 Mac（私有網段），內容限校正後文字與語音參數，不含頁面影像；不經任何第三方雲端。
 - NFR-SEC-003 Debug log 不記錄完整 OCR 文字、API Key、Authorization header 或音訊二進位。
 - NFR-SEC-004 Release build 關閉詳細 frame dump；開發診斷影像需由明確開關啟用並可一鍵清除。
-- NFR-SEC-005 所有網路端點使用 HTTPS；錯誤畫面不得暴露秘密或完整 request。
+- NFR-SEC-005 對外網路端點一律 HTTPS；區域網路的自架 Mac 服務可用 HTTP，但必須限制於私有網段並以 ATS local networking 例外明確宣告。錯誤畫面不得暴露秘密或完整 request。
 - NFR-SEC-006 若產品範圍由私人側載改為對外散布，必須先完成後端 Key proxy、隱私政策、資料保留與供應商條款審查。
 
 ### 7.4 可維護性
 
-- NFR-MNT-001 View 不直接依賴 MiniMax、Vision request 或檔案路徑。
+- NFR-MNT-001 View 不直接依賴 TTS Provider 實作、Vision request 或檔案路徑。
 - NFR-MNT-002 OCRService、PageRecognitionService、SpeechService、AudioService、BookRepository 與 AssetStore 以 protocol 隔離。
 - NFR-MNT-003 Domain model 不引用 UIKit 或第三方 Provider 型別。
 - NFR-MNT-004 所有 policy、threshold、model identifier 與格式版本集中管理並可測試。
@@ -328,7 +338,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - OCR：VNRecognizeTextRequest accurate mode，語言優先 zh-Hant、en。
 - Feature shortlist：VNGenerateImageFeaturePrintRequest。
 - Candidate verification：VNHomographicImageRegistrationRequest，加上 warp 後殘差、重疊率及邊界合理性。
-- TTS：SpeechService 抽象；本地端運算（2026-08-17 決策）：AVSpeechSynthesizer（write API 落地音檔）為保底，裝置端神經 TTS 模型（Core ML／開源模型）為品質候選；雲端 Provider（如 MiniMax）保留為未來選項。
+- TTS：SpeechService 抽象；主要 Provider 為自架 Mac TTS 服務（M2 MacBook Air 16GB 上的開源模型，經區域網路 HTTP），AVSpeechSynthesizer 為保底；第三方雲端保留為未來選項。
 - Playback：AVAudioEngine 或 AVQueuePlayer 二選一；Spike 以無縫多段播放、seek 與 interruption 行為決定。
 - Secret storage：Keychain Services。
 
@@ -342,7 +352,7 @@ iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 Swi
 | 繁中、英文 OCR | Vision | 非必要 | 先以本機實測決定準確度 |
 | 文字校正 | SwiftUI | 不需要 | 完全本機 |
 | 頁面辨識 | Vision + AVFoundation | OpenCV 僅作備案 | 先做 Apple-only Spike |
-| 自然 TTS | AVSpeechSynthesizer 可本機 | 更高自然度可用裝置端神經模型 | 已決策本地端運算；自然度以 T07 盲測驗收 |
+| 自然 TTS | AVSpeechSynthesizer 可本機 | 高自然度用自架 Mac 開源模型（區域網路） | 已決策自架 Mac 服務；自然度以 T07 盲測驗收 |
 | 音訊播放 | AVFAudio / AVFoundation | 不需要 | 完全本機 |
 | 儲存與密鑰 | SwiftData / FileManager / Keychain | 不需要 | 完全本機 |
 | AI 閱讀順序或角色分析 | 基礎幾何可本機 | LLM 為可選 | 不納入 MVP 必須 |
@@ -621,7 +631,7 @@ MVP 採本地端 TTS，無 API Key；本節僅於未來啟用雲端 Provider 時
 ### 14.2 資料傳輸
 
 - OCR、影像特徵與 live camera frame 不離開裝置。
-- TTS 僅傳校正後文字與必要語音參數。
+- TTS 僅傳校正後文字與必要語音參數，且只送往使用者自己的 Mac（私有網段），不經第三方。
 - 未來 LLM 版面分析若要上傳影像或整頁文字，必須先新增獨立同意、供應商與保留政策，不可沿用 TTS 同意。
 
 ### 14.3 著作權範圍
@@ -740,10 +750,13 @@ MVP 採本地端 TTS，無 API Key；本節僅於未來啟用雲端 Provider 時
       StoryLensUITests/
     android/
       README.md
+    server/
+      tts/
+        README.md
     shared/
       README.md
 
-contracts 是平台中立規格與 golden fixtures；ios 是目前實作；android 在第二階段建立；shared 保留給未來經決策採用的 KMP 或 native algorithm library，第一版不先放業務程式碼。
+contracts 是平台中立規格與 golden fixtures；ios 是目前實作；server 是部署在使用者 Mac 的 TTS 服務（Python，見 6.5.1）；android 在第二階段建立；shared 保留給未來經決策採用的 KMP 或 native algorithm library，第一版不先放業務程式碼。
 
 ## 18. MVP、後續階段與切割
 
@@ -753,7 +766,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - 單頁／跨頁掃描、影像校正及品質提示。
 - 繁中／英文本機 OCR。
 - 文字區塊校正、排除與閱讀順序編輯。
-- 一個本地端 TTS Provider（Apple TTS 或裝置端神經模型）、預生成與本機音訊。
+- 自架 Mac TTS 服務為主要 Provider、Apple TTS 保底、預生成與本機音訊。
 - 已選書範圍內的 Hybrid 頁面辨識。
 - 穩定、debounce、page-lock、防重播。
 - 基本播放控制。
@@ -794,7 +807,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 
 - VisionKit 掃描與繁中 OCR 品質。
 - Apple-only Hybrid recognition benchmark。
-- 本地 TTS 候選（Apple TTS、裝置端神經模型）的繁中聲音、生成速度、電量與格式比較。
+- Mac 端開源 TTS 模型（CosyVoice 2、GPT-SoVITS、fish-speech、MeloTTS 等）與 Apple TTS 的繁中聲音盲測、生成速度（RTF）、記憶體占用與格式比較。
 - Audio player 多段無縫播放。
 
 只有 recognition 與 TTS 通過最低可行門檻後，才進入完整 UI。
@@ -886,22 +899,22 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 
 ### T07 — Speech Provider Spike 與選型
 
-- Goal：比較本地端 TTS 候選（Apple AVSpeechSynthesizer、裝置端神經 TTS 模型）的繁中/英文品質、生成速度、電量、格式與落地方式；雲端服務僅作品質參考基準。
-- Files allowed：Spikes/Speech/**、docs/benchmarks/**。
+- Goal：在 M2 MacBook Air 16GB 上比較開源 TTS 模型（CosyVoice 2、GPT-SoVITS、fish-speech／OpenAudio、MeloTTS）與 Apple TTS 的繁中/英文品質、生成速度（RTF）、記憶體占用、格式與落地方式，並定案 Mac 服務的 REST contract。
+- Files allowed：Spikes/Speech/**、server/**、docs/benchmarks/**。
 - Dependencies：Gate 0 的測試文字。
 - Input：代表性旁白、對話、標點與中英混合句。
 - Expected output：決策紀錄、選定 Provider/model/format。
-- Acceptance：至少一個本地 Provider 達到主觀聲音驗收，且單位生成時間與資源占用可接受。
+- Acceptance：至少一個 Mac 端模型通過繁中主觀聲音驗收、在 16GB 記憶體內穩定運行且生成時間可接受；同時確認 Apple TTS 保底路徑可用。
 - Tests：short/long text、特殊符號、timeout、rate limit。
 
 ### T08 — SpeechService、Keychain 與生成佇列
 
-- Goal：實作本地 Provider adapter、冪等生成佇列與本機 audio asset；Keychain 與網路層僅在啟用雲端 Provider 時實作。
+- Goal：實作 Mac 服務 HTTP adapter（Bonjour／手動位址、離線佇列）、Apple TTS 保底 adapter、冪等生成佇列與本機 audio asset；Keychain 僅在未來啟用第三方雲端時實作。
 - Files allowed：StoryLens/Services/Speech/**、StoryLens/Infrastructure/Keychain/**、Networking/**、對應 tests。
 - Dependencies：T03、T06、T07。
 - Input：reviewed TextBlocks、VoiceProfile。
 - Expected output：可恢復生成佇列與有效 AudioAssets。
-- Acceptance：相同 hash 不重新運算；失敗可局部重試；App 退背景後生成以 BGProcessingTask 繼續；未來啟用雲端時 Key 不進 log/DB。
+- Acceptance：相同 hash 不重新請求；Mac 離線時佇列保留且可續作；App 退背景後請求與下載以背景 session 繼續；失敗可局部重試。
 - Tests：mock HTTP statuses、cancel、restart、atomic replace。
 
 ### T09 — Page Recognition Spike
@@ -980,8 +993,8 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 
 1. 已決策（2026-08-17）：基準與唯一測試機為 iPhone 15 Pro Max，deployment target 維持 iOS 17；支援更舊機型為延後議題。
 2. 預設掃描模式以單頁還是跨頁為主；是否需要每書混用。
-3. 已決策（2026-08-17）：TTS 採本地端模型運算，無雲端成本與資料出境議題；雲端 Provider 為未來選項。
-4. 本地 TTS 候選（Apple TTS 與裝置端神經模型）何者通過繁中聲音盲測；若均不可接受，需重新評估是否引入雲端 Provider（即推翻第 3 項決策）。
+3. 已決策（2026-08-17）：TTS 採自架 Mac 服務（M2 MacBook Air 16GB）運算，無第三方雲端成本與資料出境議題。
+4. Mac 端開源模型（CosyVoice 2、GPT-SoVITS、fish-speech、MeloTTS 等）何者通過繁中聲音盲測；若均不可接受，再評估第三方雲端（即推翻第 3 項）。
 5. 已決策（2026-08-17）：掃描確認新單位立即中斷舊音訊並播放新單位（點讀筆語意）。
 6. 是否保存原始掃描；本文件預設建書完成後可清理，保留處理後影像。
 7. 是否需要鎖屏後繼續播完當前頁；本文件列為非 MVP。
@@ -989,14 +1002,15 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 9. Android 最低 API level、最低 RAM、基準 SoC 與首批實機清單；延至 iOS MVP 穩定後依當時市場決定。
 10. 已決策（2026-08-17）：MVP 不處理備份策略，見 FR-STO-008。
 11. 破音字與人名發音修正的實作方式（Provider 音標、SSML 或替換字），依 T07 Spike 結果定案。
-12. 已隨 TTS 本地化簡化：僅剩 FR-TTS-011 重生成確認流程的文案（成本為時間與電量）。
+12. 已隨 TTS 本地化簡化：僅剩 FR-TTS-011 重生成確認流程的文案（成本為等待時間）。
+13. Mac 服務連線細節：Bonjour 自動發現或手動 IP、是否加簡單存取 token、Mac 不在線時的佇列提示文案。
 
 ## 22. MVP 最終驗收情境
 
 Given：
 
 - 使用者持有一本沒有點讀功能的普通實體繪本。
-- App 已安裝在指定 iPhone，且 TTS Provider 已設定。
+- App 已安裝在 iPhone 15 Pro Max；建書時 Mac TTS 服務與 iPhone 在同一區域網路。
 
 When：
 
