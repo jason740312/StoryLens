@@ -1,9 +1,9 @@
 # StoryLens：AI 實體書智慧朗讀 App 完整開發需求
 
 - 文件狀態：Draft for approval
-- 版本：0.4
+- 版本：0.5
 - 日期：2026-08-17
-- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋
+- 來源：ChatGPT 討論規格.rtf，經可行性評估、矛盾整理與技術查核後重寫；v0.3 依需求評估報告（docs/requirements-review.md）補強資料模型一致性、成本控制、量測定義與待決策事項；v0.4 併入 2026-08-17 產品決策：建書 job 背景續跑、MVP 不處理備份、閱讀採「掃描定位後即關閉相機」模式、相似頁不列為 MVP 阻擋；v0.5 定案點讀筆互動模型、基準機 iPhone 15 Pro Max 與 TTS 本地端模型運算
 - 目標讀者：產品、UX、iOS、測試與後續 Coding Agent
 
 ## 1. 文件定位與解讀原則
@@ -19,7 +19,7 @@
 
 ## 2. 產品摘要
 
-StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要場景的實體書智慧朗讀 App。使用者先將自己持有的實體書逐頁或逐跨頁掃描，完成 OCR、文字校正、閱讀順序確認及語音生成。之後選擇該書並將相機對準目前頁面，App 在裝置端辨識朗讀單位；定位確認後立即關閉相機並播放已預先產生的音訊。相機只在定位頁面的短暫時間內使用，播放期間不開啟。
+StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要場景的實體書智慧朗讀 App。使用者先將自己持有的實體書逐頁或逐跨頁掃描，完成 OCR、文字校正、閱讀順序確認及語音生成。之後選擇該書並將相機對準目前頁面，App 在裝置端辨識朗讀單位；定位確認後立即關閉相機並播放已預先產生的音訊。相機只在定位頁面的短暫時間內使用，播放期間不開啟。互動模型比照點讀筆：掃一頁、播一頁；想聽下一頁就掃下一頁，重掃同一頁就從頭重播。
 
 核心價值是「一次建書，多次離線翻頁即讀」。實體書是主要介面，手機只負責建檔、辨識、播放與必要控制，不是電子書閱讀器。
 
@@ -29,11 +29,11 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 
 - 第一平台為 iPhone；使用 Swift、SwiftUI 與 Apple 原生框架。
 - 優先內容為繁體中文、英文兒童繪本與故事書。
-- 建書階段允許較重的運算與網路服務；完成後的一般閱讀必須可離線。
+- 建書階段允許較重的運算；完成後的一般閱讀必須可離線。TTS 採本地端模型運算（2026-08-17 決策），全流程預設不需網路。
 - OCR 結果必須允許人工校正，且校正完成後才生成正式朗讀。
 - 語音預先生成並落地保存；閱讀時不得重新做完整 OCR 或呼叫雲端 TTS。
 - MVP 不含帳號、雲端同步、公開分享、書籍市場、Android、Web 或 App Store 發布。
-- 掃描影像預設留在裝置；TTS 原則上只傳送校正後文字與語音參數。
+- 掃描影像與文字預設全部留在裝置；MVP 的 TTS 在本地端運算，不上傳任何內容。未來若啟用雲端 Provider，僅傳送校正後文字與語音參數。
 
 ### 3.2 原始需求中的矛盾與決議
 
@@ -43,9 +43,9 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 | 單頁或左右跨頁 | 兩者都要求支援，但資料模型只有 Page | 新增 ReadingUnit；一個朗讀單位可對應單頁或跨頁 |
 | 頁面辨識技術 | 列出多種候選但未選定 | 採兩階段 Hybrid，先用全域特徵縮小候選，再做幾何驗證與時間穩定 |
 | OCR 閱讀順序 | 希望自動分析，也要求人工可改 | 自動排序只是初稿；人工結果才是朗讀真實來源 |
-| TTS Provider | 提到 MiniMax，但要求避免綁定 | Provider 抽象化；MiniMax 為首個候選，須經繁中聲音與成本驗收後定案 |
-| API Key | 私用可不建後端，但又要求安全 | 私人側載版允許使用者自帶 Key 並存 Keychain；任何對外散布版必須改用後端代理 |
-| 播放下一頁 | 「切換下一頁」可能中斷或排隊不明 | 翻頁由使用者重新掃描或 Previous/Next 觸發；新朗讀單位確認後立即停止舊音訊並播放新單位；同一單位不重播 |
+| TTS Provider | 提到 MiniMax，但要求避免綁定 | Provider 抽象化；2026-08-17 決策採本地端模型運算，候選為 Apple 本機 TTS 與裝置端神經 TTS 模型，經繁中聲音驗收定案；雲端 Provider 降為未來選項 |
+| API Key | 私用可不建後端，但又要求安全 | MVP 採本地 TTS，無 Key 需求；未來啟用雲端 Provider 時，私人側載版自帶 Key 存 Keychain，對外散布版必須後端代理 |
+| 播放下一頁 | 「切換下一頁」可能中斷或排隊不明 | 比照點讀筆：每次掃描確認即播放該單位，重掃同一頁即從頭重播；掃描確認新單位時立即停止舊音訊 |
 | 無文字頁 | 要掃描，但沒有播放規則 | 可標為 silent；辨識後不播放並等待翻頁 |
 
 ## 4. 目標、成功指標與非目標
@@ -60,12 +60,12 @@ StoryLens 是一套以 iPhone 為第一平台、以家庭私人使用為首要�
 
 ### 4.2 MVP 成功指標
 
-以下數值是開發基準，需在「基準裝置」確認後凍結：
+以下數值是開發基準，基準裝置為 iPhone 15 Pro Max（2026-08-17 已決策），數值在該裝置實測後凍結：
 
 - 已選書、標準測試集上的 Top-1 朗讀單位辨識率至少 95%。
 - 自動誤播率低於 0.5%，即每 200 次確認事件不超過 1 次錯頁播放。「確認事件」定義為 recognition log 中一次由 stabilizing 轉入 confirmed 的狀態轉移；量測方法必須與 16.4 的 benchmark runner 使用同一定義。
 - 從新頁進入穩定取景到音訊開始播放，P50 不超過 0.8 秒、P95 不超過 1.5 秒。
-- 定位確認後相機立即關閉；重複掃描到同一朗讀單位不自動重播，重播僅能由 Replay 觸發。
+- 定位確認後相機立即關閉；每次「掃描並確認」都是一次明確播放指令，重掃同一頁即從頭重播（點讀筆語意）；沒有掃描或人工操作時，絕不自動出聲。
 - Ready 書籍在飛航模式下可完成辨識、播放、暫停、重播與翻頁切換。
 - App 被正常關閉並重開後，書籍、校正文字、索引與音訊仍完整可用。
 - 連續閱讀 20 分鐘不崩潰、不出現持續性的 Serious/Critical thermal state。
@@ -114,7 +114,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 4. 同一候選在時間、分數與幾何驗證均達門檻後才確認。
 5. 確認後 App 立即關閉相機；若為新朗讀單位，播放其本機音訊。
 6. 使用者翻頁後重新啟動掃描定位，或以 Previous/Next 直接切換；確認新單位後停止舊音訊並播放新音訊。
-7. 播放期間相機保持關閉；重複掃描到同一單位不自動重播，只有 Replay 才可重播。
+7. 播放期間相機保持關閉；重掃同一單位即從頭重播（等同點讀筆點同一處），Replay 按鈕是不想重新掃描時的替代操作。
 
 #### C. 修正與重新生成
 
@@ -194,21 +194,21 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 ### 6.5 TTS 生成
 
 - FR-TTS-001 必須以 Provider protocol 抽象化雲端與本機語音服務。
-- FR-TTS-002 MVP 至少整合一個可產生自然繁中與英文語音的正式 Provider。
+- FR-TTS-002 MVP 至少整合一個本地端 Provider，可產生可接受的繁中與英文語音；候選為 Apple AVSpeechSynthesizer（以 write API 落地音檔）與裝置端神經 TTS 模型（Core ML／開源模型移植），由 T07 盲測定案。雲端 Provider 不在 MVP，但抽象層必須允許未來加入。
 - FR-TTS-003 必須支援 voice、speed、volume；style、pitch 僅在 Provider 支援時顯示。
 - FR-TTS-004 必須以 TextBlock 或可控長度片段生成，並以 ReadingUnit manifest 決定播放順序。
 - FR-TTS-005 每個 request 必須有 contentHash，包含標準化文字、Provider、model、voice、生成參數、generationFormatVersion 與分段規則版本；canonicalization 規則見 23.5。
-- FR-TTS-006 相同 contentHash 已有有效檔案時必須重用，不再次呼叫 API。
+- FR-TTS-006 相同 contentHash 已有有效檔案時必須重用，不重新運算生成。
 - FR-TTS-007 生成佇列必須支援進度、取消、單項重試、指數退避及 Provider 錯誤訊息轉譯。
 - FR-TTS-008 新檔下載與驗證成功後才能原子替換舊檔。
 - FR-TTS-009 書籍只有在所有 includeInSpeech 區塊具備有效音訊，或被明確標成 silent，才可為 Ready。
-- FR-TTS-010 應提供 Apple 本機 TTS 作為開發、預覽或降級選項，但不保證等同雲端自然度。
-- FR-TTS-011 生成前必須顯示影響範圍（朗讀單位數、區塊數、字元總數）；更換 voice 或 model 等會使整本音訊變 stale 的操作，必須顯示重生成範圍並二次確認，避免非預期的整本重新計費。
+- FR-TTS-010 Apple 本機 TTS 至少作為保底 Provider；若 T07 選定裝置端神經 TTS 模型，Apple TTS 仍保留為預覽與降級選項。
+- FR-TTS-011 生成前必須顯示影響範圍（朗讀單位數、區塊數、字元總數）；更換 voice 或 model 等會使整本音訊變 stale 的操作，必須顯示重生成範圍並二次確認，避免非預期的整本重新生成（本地運算的成本是時間、電量與發熱）。
 
 驗收：
 
-- 飛航模式閱讀既有書籍時，網路請求數為零。
-- 模擬 401、429、5xx、逾時、回傳空檔與磁碟已滿，均有可理解且可重試的狀態。
+- 飛航模式下建書與閱讀的網路請求數皆為零（本地 TTS）。
+- 模擬生成失敗、模型載入失敗、逾時、回傳空檔與磁碟已滿，均有可理解且可重試的狀態；未來啟用雲端 Provider 時另涵蓋 401、429、5xx。
 - 只修改一個 TextBlock 時，只重新生成該區塊。
 
 ### 6.6 辨識索引
@@ -228,7 +228,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-READ-005 第一階段以 feature print 距離取 Top-K 候選；第二階段對候選做幾何對齊與殘差驗證。
 - FR-READ-006 確認必須同時考量候選分數、第一與第二名差距、幾何品質、連續出現時間及最近確認頁。
 - FR-READ-007 門檻不可硬編碼散落在 UI；必須集中為可記錄版本的 RecognitionPolicy。
-- FR-READ-008 重複掃描到同一朗讀單位（等於目前單位）不得自動重播；重播僅能由 Replay 觸發。
+- FR-READ-008 比照點讀筆語意：每次「掃描並確認」都是明確的播放指令，重掃同一單位時從頭重播；沒有掃描或人工操作時不得有任何自動播放。
 - FR-READ-009 新頁被確認時，必須停止舊頁音訊、切換 currentReadingUnit，並播放新頁。
 - FR-READ-010 confidence 低或候選歧義時不得播放；畫面顯示「請對準完整頁面」等可行動提示。
 - FR-READ-011 必須支援 Replay、Play、Pause、Resume、Stop、Previous 與 Next。
@@ -271,8 +271,8 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - FR-SET-002 不使用麥克風，因此 MVP 不請求麥克風權限。
 - FR-SET-003 若不寫入 Photos，就不請求相簿權限。
 - FR-SET-004 相機權限被拒時提供前往系統設定的說明；其餘書庫與編輯功能仍可使用。
-- FR-SET-005 API Key 只能存 Keychain，禁止寫入 repository、UserDefaults、log 或 crash payload。
-- FR-SET-006 必須提供測試 Provider 連線與刪除 Key 的操作。
+- FR-SET-005 僅於未來啟用雲端 Provider 時適用：API Key 只能存 Keychain，禁止寫入 repository、UserDefaults、log 或 crash payload。
+- FR-SET-006 僅於未來啟用雲端 Provider 時適用：必須提供測試 Provider 連線與刪除 Key 的操作。
 
 ## 7. 非功能性需求
 
@@ -281,8 +281,8 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - NFR-PERF-001 相機分析不得在 MainActor 執行影像特徵計算。
 - NFR-PERF-002 同時間最多處理一個 live frame；新 frame 可丟棄，不得無限排隊。
 - NFR-PERF-003 追蹤 recognition latency、confirmation latency、audio start latency 與 dropped frames。
-- NFR-PERF-004 所有正式門檻需在至少一台較舊支援裝置與一台主要開發裝置 benchmark。
-- NFR-PERF-005 建書階段長任務（OCR、TTS、索引）必須以背景任務續跑：TTS 網路請求使用 URLSession background configuration；OCR 與索引等本機運算使用 BGTaskScheduler（BGProcessingTask）排程。iOS 不保證背景執行時間與時點，因此每個 job 仍必須可安全暫停並於前景恢復（ProcessingJob resumablePayload）；背景續跑是體驗要求，可續作是正確性底線。背景寫檔需搭配相容的檔案保護等級（見 FR-STO-006）。
+- NFR-PERF-004 所有正式門檻在基準裝置 iPhone 15 Pro Max 上 benchmark 並凍結（目前唯一實機）；未來若要支援較舊機型，必須先在該機型重新 benchmark，不可沿用既有門檻。
+- NFR-PERF-005 建書階段長任務（OCR、TTS 生成、索引）皆為本機運算，必須以 BGTaskScheduler（BGProcessingTask）排程於背景續跑；未來若啟用雲端 Provider，其網路請求改用 URLSession background configuration。iOS 不保證背景執行時間與時點，因此每個 job 仍必須可安全暫停並於前景恢復（ProcessingJob resumablePayload）；背景續跑是體驗要求，可續作是正確性底線。背景寫檔需搭配相容的檔案保護等級（見 FR-STO-006）。
 
 ### 7.2 可靠性與恢復
 
@@ -294,7 +294,7 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 ### 7.3 隱私與安全
 
 - NFR-SEC-001 OCR、索引與頁面辨識預設完全在裝置端。
-- NFR-SEC-002 雲端 TTS payload 限於校正文字、選定 voice/model 與必要參數，不上傳頁面影像。
+- NFR-SEC-002 MVP 的 TTS 在本地端運算，無任何內容上傳；未來若啟用雲端 TTS，payload 限於校正文字、選定 voice/model 與必要參數，不上傳頁面影像。
 - NFR-SEC-003 Debug log 不記錄完整 OCR 文字、API Key、Authorization header 或音訊二進位。
 - NFR-SEC-004 Release build 關閉詳細 frame dump；開發診斷影像需由明確開關啟用並可一鍵清除。
 - NFR-SEC-005 所有網路端點使用 HTTPS；錯誤畫面不得暴露秘密或完整 request。
@@ -328,11 +328,11 @@ MVP 不建立帳號或角色權限；上述是使用情境，不是登入角色�
 - OCR：VNRecognizeTextRequest accurate mode，語言優先 zh-Hant、en。
 - Feature shortlist：VNGenerateImageFeaturePrintRequest。
 - Candidate verification：VNHomographicImageRegistrationRequest，加上 warp 後殘差、重疊率及邊界合理性。
-- TTS：SpeechService 抽象；MiniMax 為首個雲端候選，AVSpeechSynthesizer 為本機 fallback 或測試方案。
+- TTS：SpeechService 抽象；本地端運算（2026-08-17 決策）：AVSpeechSynthesizer（write API 落地音檔）為保底，裝置端神經 TTS 模型（Core ML／開源模型）為品質候選；雲端 Provider（如 MiniMax）保留為未來選項。
 - Playback：AVAudioEngine 或 AVQueuePlayer 二選一；Spike 以無縫多段播放、seek 與 interruption 行為決定。
 - Secret storage：Keychain Services。
 
-iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 SwiftData 可簡化本機 schema 與 migration，且私人自用場景不需要為極舊裝置增加 Core Data 相容成本。若實際測試 iPhone 無法升級至 iOS 17，需重新評估 deployment target 與 persistence。
+iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 SwiftData 可簡化本機 schema 與 migration，且私人自用場景不需要為極舊裝置增加 Core Data 相容成本。基準機 iPhone 15 Pro Max 出廠即 iOS 17，無升級疑慮，必要時可再提高 target。
 
 ### 8.2 Apple 原生與第三方邊界
 
@@ -342,7 +342,7 @@ iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 Swi
 | 繁中、英文 OCR | Vision | 非必要 | 先以本機實測決定準確度 |
 | 文字校正 | SwiftUI | 不需要 | 完全本機 |
 | 頁面辨識 | Vision + AVFoundation | OpenCV 僅作備案 | 先做 Apple-only Spike |
-| 自然 TTS | AVSpeechSynthesizer 可本機 | 高自然度通常需雲端 | MVP 預期需要一個雲端 Provider |
+| 自然 TTS | AVSpeechSynthesizer 可本機 | 更高自然度可用裝置端神經模型 | 已決策本地端運算；自然度以 T07 盲測驗收 |
 | 音訊播放 | AVFAudio / AVFoundation | 不需要 | 完全本機 |
 | 儲存與密鑰 | SwiftData / FileManager / Keychain | 不需要 | 完全本機 |
 | AI 閱讀順序或角色分析 | 基礎幾何可本機 | LLM 為可選 | 不納入 MVP 必須 |
@@ -385,7 +385,7 @@ iOS 17 是架構選擇，不代表所有 API 都只支援 iOS 17。原因是 Swi
 
 Spike 通過條件：
 
-- 在至少兩台裝置達成第 4.2 節的 accuracy、false autoplay 與 latency 指標。
+- 在基準裝置 iPhone 15 Pro Max 達成第 4.2 節的 accuracy、false autoplay 與 latency 指標。
 - 若未達標，依序嘗試：調整 ROI/variants/policy、加入局部特徵、評估 OpenCV；不可用降低 confidence 門檻掩蓋誤播。
 
 ## 10. 系統架構
@@ -571,12 +571,12 @@ Draft → Scanning → RecognizingText → Reviewing → GeneratingAudio → Ind
 - searching + 合格候選 → stabilizing。
 - stabilizing + 持續達標 → confirmed。
 - stabilizing + 分數下降或競爭候選 → searching。
-- confirmed → 立即關閉相機；有音訊且不是 lastPlayedUnit → playing。
+- confirmed → 立即關閉相機；有音訊 → playing（不論是否為上次播放的單位，重掃即重播）。
 - confirmed + silent → waitingForNextScan。
-- playing + 重新掃描確認同一 unit → playing，不重啟。
+- playing + 重新掃描確認同一 unit → 停止後從頭重播（點讀筆語意）。
 - playing + 新 unit confirmed → 停止舊音訊 → playing(new)。
 - playing + audio ended → waitingForNextScan。
-- waitingForNextScan + 重新掃描確認同一 unit → 保持等待，不重播。
+- waitingForNextScan + 重新掃描確認同一 unit → playing(same, fromStart)。
 - waitingForNextScan + 新 unit confirmed → playing(new)。
 - 任意狀態 + Replay → playing(current, fromStart)。
 - 任意相機狀態 + app background → inactive，停止 capture。
@@ -602,6 +602,8 @@ Recognizer 只產生 candidate event；只有 ReaderSession 可決定播放，�
 ## 14. 安全、隱私、著作權與 Developer Account
 
 ### 14.1 API Key
+
+MVP 採本地端 TTS，無 API Key；本節僅於未來啟用雲端 Provider 時適用。
 
 私人自用版本：
 
@@ -751,7 +753,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - 單頁／跨頁掃描、影像校正及品質提示。
 - 繁中／英文本機 OCR。
 - 文字區塊校正、排除與閱讀順序編輯。
-- 一個正式高品質 TTS Provider、Keychain Key、預生成與本機音訊。
+- 一個本地端 TTS Provider（Apple TTS 或裝置端神經模型）、預生成與本機音訊。
 - 已選書範圍內的 Hybrid 頁面辨識。
 - 穩定、debounce、page-lock、防重播。
 - 基本播放控制。
@@ -785,14 +787,14 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 ### Gate 0：需求凍結
 
 - 確認第 21 節待決策事項。
-- 確認基準 iPhone 與 deployment target。
+- 已完成：基準 iPhone 為 iPhone 15 Pro Max，deployment target iOS 17。
 - 確認測試書籍可合法用於內部測試。
 
 ### Gate 1：技術 Spike
 
 - VisionKit 掃描與繁中 OCR 品質。
 - Apple-only Hybrid recognition benchmark。
-- MiniMax 與 Apple TTS 的繁中聲音、成本、延遲、格式及條款比較。
+- 本地 TTS 候選（Apple TTS、裝置端神經模型）的繁中聲音、生成速度、電量與格式比較。
 - Audio player 多段無縫播放。
 
 只有 recognition 與 TTS 通過最低可行門檻後，才進入完整 UI。
@@ -884,22 +886,22 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 
 ### T07 — Speech Provider Spike 與選型
 
-- Goal：比較 MiniMax 與 Apple TTS 的繁中/英文品質、格式、成本、失敗與落地方式。
+- Goal：比較本地端 TTS 候選（Apple AVSpeechSynthesizer、裝置端神經 TTS 模型）的繁中/英文品質、生成速度、電量、格式與落地方式；雲端服務僅作品質參考基準。
 - Files allowed：Spikes/Speech/**、docs/benchmarks/**。
-- Dependencies：Gate 0 的測試文字與預算。
+- Dependencies：Gate 0 的測試文字。
 - Input：代表性旁白、對話、標點與中英混合句。
 - Expected output：決策紀錄、選定 Provider/model/format。
-- Acceptance：至少一個正式 Provider 達到主觀聲音驗收，且 API/成本可接受。
+- Acceptance：至少一個本地 Provider 達到主觀聲音驗收，且單位生成時間與資源占用可接受。
 - Tests：short/long text、特殊符號、timeout、rate limit。
 
 ### T08 — SpeechService、Keychain 與生成佇列
 
-- Goal：實作 Provider adapter、Keychain、冪等生成與本機 audio asset。
+- Goal：實作本地 Provider adapter、冪等生成佇列與本機 audio asset；Keychain 與網路層僅在啟用雲端 Provider 時實作。
 - Files allowed：StoryLens/Services/Speech/**、StoryLens/Infrastructure/Keychain/**、Networking/**、對應 tests。
 - Dependencies：T03、T06、T07。
 - Input：reviewed TextBlocks、VoiceProfile。
 - Expected output：可恢復生成佇列與有效 AudioAssets。
-- Acceptance：Key 不進 log/DB；相同 hash 不重送；失敗可局部重試；App 退背景後生成與下載以背景 session 繼續。
+- Acceptance：相同 hash 不重新運算；失敗可局部重試；App 退背景後生成以 BGProcessingTask 繼續；未來啟用雲端時 Key 不進 log/DB。
 - Tests：mock HTTP statuses、cancel、restart、atomic replace。
 
 ### T09 — Page Recognition Spike
@@ -929,7 +931,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - Dependencies：T10。
 - Input：Candidate stream。
 - Expected output：ReaderSession 與 camera preview。
-- Acceptance：單幀不播、確認後立即關閉相機、重複掃描同頁不重播、新頁確認才切換、背景停止 camera。
+- Acceptance：單幀不播、確認後立即關閉相機、掃描確認即播放（重掃同頁從頭重播）、無掃描不自動出聲、背景停止 camera。
 - Tests：完整 state transition、權限拒絕、interruption。
 
 ### T12 — AudioService 與播放控制
@@ -967,7 +969,7 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 - Goal：執行第 16 節完整測試與第 4.2 指標驗收。
 - Files allowed：tests、fixtures、docs/benchmarks、只修驗收發現且核准範圍內的 production files。
 - Dependencies：T01–T14。
-- Input：至少 3 本測試書與兩台基準裝置。
+- Input：至少 3 本測試書與基準裝置 iPhone 15 Pro Max。
 - Expected output：MVP acceptance report、已知限制、release candidate。
 - Acceptance：第 4.2 全數通過，或每個例外都有明確產品簽核。
 - Tests：unit、integration、UI、real-world、offline、thermal、storage failure。
@@ -976,18 +978,18 @@ contracts 是平台中立規格與 golden fixtures；ios 是目前實作；andro
 
 下列項目不應由工程默默假設：
 
-1. 實際測試 iPhone 型號、可用 iOS 版本與可接受最低機型。
+1. 已決策（2026-08-17）：基準與唯一測試機為 iPhone 15 Pro Max，deployment target 維持 iOS 17；支援更舊機型為延後議題。
 2. 預設掃描模式以單頁還是跨頁為主；是否需要每書混用。
-3. 雲端 TTS 每本書或每月可接受成本，以及可接受的資料處理地區與條款。
-4. MiniMax 是否通過繁中聲音盲測；若未通過，需比較其他 Provider。
-5. 閱讀時新頁出現是否一律立即中斷舊頁；本文件預設「是」。
+3. 已決策（2026-08-17）：TTS 採本地端模型運算，無雲端成本與資料出境議題；雲端 Provider 為未來選項。
+4. 本地 TTS 候選（Apple TTS 與裝置端神經模型）何者通過繁中聲音盲測；若均不可接受，需重新評估是否引入雲端 Provider（即推翻第 3 項決策）。
+5. 已決策（2026-08-17）：掃描確認新單位立即中斷舊音訊並播放新單位（點讀筆語意）。
 6. 是否保存原始掃描；本文件預設建書完成後可清理，保留處理後影像。
 7. 是否需要鎖屏後繼續播完當前頁；本文件列為非 MVP。
 8. App UI 語言是否只需繁體中文，或第一版即需英文介面。
 9. Android 最低 API level、最低 RAM、基準 SoC 與首批實機清單；延至 iOS MVP 穩定後依當時市場決定。
 10. 已決策（2026-08-17）：MVP 不處理備份策略，見 FR-STO-008。
 11. 破音字與人名發音修正的實作方式（Provider 音標、SSML 或替換字），依 T07 Spike 結果定案。
-12. 單書與每月 TTS 成本上限的具體數值，以及 FR-TTS-011 重生成確認流程的文案。
+12. 已隨 TTS 本地化簡化：僅剩 FR-TTS-011 重生成確認流程的文案（成本為時間與電量）。
 
 ## 22. MVP 最終驗收情境
 
@@ -1008,7 +1010,7 @@ Then：
 
 - App 不重新做完整 OCR，也不呼叫 TTS。
 - App 在指標時間內正確確認並播放本機音訊。
-- 定位成功後相機自動關閉；重複掃描同一頁不重播。
+- 定位成功後相機自動關閉；重掃同一頁即從頭重播，無掃描時絕不自動出聲。
 - 翻到新頁並重新掃描後，停止舊音訊並播放新單位。
 - 低 confidence 或歧義時保持安靜並提示調整。
 - 單一 silent 頁、缺字頁或歷史失敗不使整本書崩潰。
